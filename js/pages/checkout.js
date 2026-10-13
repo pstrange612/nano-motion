@@ -14,6 +14,7 @@
 
   var TEST_DETAILS = {
     email: "taylor.test@example.com",
+    phoneCountryCode: "1",
     phone: "(415) 555-0132",
     firstName: "Taylor",
     lastName: "Test",
@@ -23,6 +24,16 @@
     postalCode: "94107",
     country: "US"
   };
+
+  // Country calling codes offered beside the phone number.
+  var PHONE_CODES = [
+    { code: "1", label: "+1 US" },
+    { code: "44", label: "+44 UK" },
+    { code: "61", label: "+61 AU" },
+    { code: "49", label: "+49 DE" },
+    { code: "33", label: "+33 FR" },
+    { code: "81", label: "+81 JP" }
+  ];
 
   function field(id, label, type, autocomplete, extra) {
     return (
@@ -41,7 +52,16 @@
             '<button type="button" class="link-btn" id="fill-test">Fill test details</button></div>' +
           '<div class="field-row">' +
             field("email", "Email", "email", "email") +
-            field("phone", "Phone", "tel", "tel") +
+            '<label class="field" for="phone"><span>Phone</span>' +
+              '<span class="phone-group">' +
+                '<select id="phoneCountryCode" name="phoneCountryCode" aria-label="Country calling code" autocomplete="tel-country-code">' +
+                  PHONE_CODES.map(function (c) {
+                    return '<option value="' + c.code + '">' + c.label + "</option>";
+                  }).join("") +
+                "</select>" +
+                '<input id="phone" name="phone" type="tel" autocomplete="tel-national" required>' +
+              "</span>" +
+            "</label>" +
           "</div>" +
 
           "<h2>Shipping</h2>" +
@@ -136,7 +156,7 @@
 
     var values = {};
     var missing = [];
-    ["email", "phone", "firstName", "lastName", "address", "city", "region", "postalCode", "country"].forEach(function (key) {
+    ["email", "phoneCountryCode", "phone", "firstName", "lastName", "address", "city", "region", "postalCode", "country"].forEach(function (key) {
       var input = document.getElementById(key);
       values[key] = input.value.trim();
       input.classList.toggle("has-error", !values[key]);
@@ -167,6 +187,7 @@
       total: cart.total,
       customer: {
         email: values.email,
+        phoneCountryCode: values.phoneCountryCode,
         phone: values.phone,
         firstName: values.firstName,
         lastName: values.lastName,

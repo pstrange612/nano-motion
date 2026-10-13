@@ -1,5 +1,5 @@
 // Order confirmation page: order-confirmation.html?order=NM-XXXX
-(function () {
+(async function () {
   "use strict";
 
   var main = document.getElementById("main");
@@ -61,8 +61,17 @@
   } catch (err) { /* storage unavailable */ }
 
   // MEASUREMENT: the order is confirmed. In scope: order (id, items, subtotal, tax, total,
-  // currency, customer.email) and firstView (false when this page is reloaded).
+  // currency, customer) and firstView (false when this page is reloaded).
   if (firstView) {
+    var user = null;
+    try {
+      user = await NMUserData.buildUserData(order.customer);
+    } catch (err) { /* Hashing unavailable or failed: send the purchase without user data. */ }
+
+    if (user) {
+      oaiq("init", { user: user });
+    }
+
     oaiq("measure", "order_created", {
       type: "contents",
       amount: order.subtotal,

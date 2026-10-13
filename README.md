@@ -97,14 +97,28 @@ but cannot persist between pages. Debug enables logging; it does not prevent eve
 ### Manual test
 
 Run `python3 tools/serve.py 4174` and use a fresh private browser window for an empty bag.
-Open `http://localhost:4174/index.html?debug=1`, then open Developer Tools. Enable **Preserve
-log** in both Console and Network, and filter Network by `bzr.openai.com` with **All** request
-types visible. Reload the home page after opening Developer Tools.
+Open `http://localhost:4174/index.html?debug=1`, then open Chrome Developer Tools with
+**Command + Option + I**:
 
-Wait for each listed event request to appear before taking the next action. For each event below,
-expect the same event name in SDK console activity and in the event
-payload sent to `bzr.openai.com`. The SDK also sends lifecycle/diagnostic records; these are not store events. Events may be batched together; two events do not necessarily
-mean two requests. The SDK script and configuration load separately from `bzrcdn.openai.com`.
+1. In **Console**, open the **Default levels** dropdown and enable **Verbose** (or select
+   all levels). The SDK uses `console.debug`, which Chrome can hide at the default level.
+   Clear the text filter, enable **Preserve log**, and reload. Look for `[oaiq] event queued`
+   entries with `eventName: "page_viewed"`. You can then filter by `oaiq`.
+2. In **Network**, enable **Preserve log**, select **All** request types, filter by
+   `bzr.openai.com`, and reload. Select the `events?pid=...` POST request.
+3. Click **Payload** beside **Headers**, then expand **Request Payload → events**. Event
+   names appear as `events[].type`; each event's contents and amounts are inside
+   `events[].data`. The order ID supplied through the `event_id` option appears as
+   `events[].id`. If the JSON is displayed as text, use **view source** or search the
+   payload for `page_viewed`. HTTP headers do not contain the event objects.
+
+Wait for each listed event request to appear before taking the next action. Expect the same
+store event names in Console and the request payload. A `202 Accepted` response confirms
+that the endpoint accepted the request; inspect its payload to verify which events it carried.
+The SDK also sends lifecycle/diagnostic records; these are not store events. Events may be
+batched together, so two events do not necessarily mean two requests. The SDK script and
+configuration load separately from `bzrcdn.openai.com`. An empty **Response** tab is not the
+event payload; inspect **Payload** instead.
 
 | Click or action | Expected events / checks |
 |---|---|

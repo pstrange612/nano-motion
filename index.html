@@ -9,6 +9,38 @@
 
   <!-- MEASUREMENT: the OpenAI Measurement Pixel base code goes here, near the top of <head>. -->
 
+  <script>
+    (function (w, d, s, u) {
+      if (w.oaiq) return;
+      var q = function () {
+        q.q.push(arguments);
+      };
+      q.q = [];
+      w.oaiq = q;
+      var js = d.createElement(s);
+      js.async = true;
+      js.src = u;
+      var f = d.getElementsByTagName(s)[0];
+      f.parentNode.insertBefore(js, f);
+    })(window, document, "script", "https://bzrcdn.openai.com/sdk/oaiq.min.js");
+
+    // Debug is off unless enabled for this tab with ?debug=1; ?debug=0 disables it.
+    var nmPixelDebugParam = new URLSearchParams(window.location.search).get("debug");
+    var nmPixelDebug = nmPixelDebugParam === "1";
+    try {
+      if (nmPixelDebugParam === "1" || nmPixelDebugParam === "0") {
+        sessionStorage.setItem("nm_pixel_debug", nmPixelDebugParam);
+      } else {
+        nmPixelDebug = sessionStorage.getItem("nm_pixel_debug") === "1";
+      }
+    } catch (err) { /* storage unavailable: use the URL setting for this page */ }
+
+    oaiq("init", {
+      pixelId: "1vU1PkihULoohTs1TNQBzy",
+      debug: nmPixelDebug
+    });
+  </script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&display=swap" rel="stylesheet">

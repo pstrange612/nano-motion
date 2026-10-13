@@ -175,6 +175,21 @@
     var line = NM.cart.add(variant.itemId, state.quantity);
     // MEASUREMENT: an item was added to the bag. In scope: line (itemId, name, quantity,
     // unitPrice, lineTotal) and NM.catalog.currency.
+    oaiq("measure", "items_added", {
+      type: "contents",
+      amount: line.lineTotal,
+      currency: "USD",
+      contents: [
+        {
+          id: line.itemId,
+          name: line.name,
+          content_type: "product",
+          quantity: line.quantity,
+          amount: line.unitPrice,
+          currency: "USD"
+        }
+      ]
+    });
 
     openDrawer(line);
     state.quantity = 1;
@@ -186,4 +201,23 @@
   // MEASUREMENT: a product page has loaded. In scope: product (id, name, category, price),
   // state.colorCode (the color shown), and selectedVariant(), which is null until the
   // shopper has chosen a size.
+  oaiq("measure", "page_viewed", {
+    type: "contents",
+    contents: [
+      { id: "product-" + product.id, name: product.name + " product page", content_type: "page" }
+    ]
+  });
+
+  oaiq("measure", "contents_viewed", {
+    type: "contents",
+    contents: [
+      {
+        id: product.id,
+        name: product.name,
+        content_type: "product",
+        amount: product.price,
+        currency: "USD"
+      }
+    ]
+  });
 })();

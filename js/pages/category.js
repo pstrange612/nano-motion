@@ -30,4 +30,10 @@
     "</section>";
 
   // MEASUREMENT: a category page has loaded. In scope: category (id, name), products.
+  oaiq("measure", "page_viewed", {
+    type: "contents",
+    contents: [
+      { id: "category-" + category.id, name: category.name + " category", content_type: "page" }
+    ]
+  });
 })();

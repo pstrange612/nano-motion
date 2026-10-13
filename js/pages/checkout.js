@@ -117,22 +117,10 @@
   var form = document.getElementById("checkout-form");
   var emailInput = document.getElementById("email");
   var errorBox = document.getElementById("form-error");
-  var lastEmailAnnounced = null;
 
   function isEmail(value) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
   }
-
-  // Runs once each time the shopper has entered a new, valid email address.
-  function announceEmail() {
-    var email = emailInput.value.trim();
-    if (isEmail(email) && email !== lastEmailAnnounced) {
-      lastEmailAnnounced = email;
-      // MEASUREMENT: a valid email is now available. In scope: email.
-    }
-  }
-
-  emailInput.addEventListener("blur", announceEmail);
 
   document.getElementById("fill-test").addEventListener("click", function () {
     Object.keys(TEST_DETAILS).forEach(function (key) {
@@ -143,7 +131,6 @@
       }
     });
     errorBox.hidden = true;
-    announceEmail();
   });
 
   // Clear a field's error outline as soon as the shopper types in it.
@@ -171,8 +158,6 @@
       errorBox.hidden = false;
       return;
     }
-
-    announceEmail();
 
     var cart = NM.cart.summary();
     var order = {

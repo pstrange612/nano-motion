@@ -46,12 +46,6 @@
     '<section class="section">' +
       '<div class="section-head"><h2>Featured</h2></div>' +
       '<div class="product-grid">' + featured.map(NM.productCard).join("") + "</div>" +
-    "</section>" +
-
-    '<section class="promise-strip">' +
-      "<div><strong>Free shipping</strong><span>On every order</span></div>" +
-      "<div><strong>30-day returns</strong><span>Worn or not</span></div>" +
-      "<div><strong>Built to last</strong><span>Two-year guarantee</span></div>" +
     "</section>";
 
   // MEASUREMENT: the home page has loaded.

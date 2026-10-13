@@ -244,23 +244,6 @@ h2 { font-size: 1.35rem; }
   font-size: 0.9rem;
 }
 
-.promise-strip {
-  max-width: var(--max);
-  margin: 16px auto 56px;
-  padding: 0 24px;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-.promise-strip div {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-}
-.promise-strip span { color: var(--muted); font-size: 0.9rem; }
-
 /* ---------- Product cards ---------- */
 
 .product-grid {
@@ -535,7 +518,6 @@ h2 { font-size: 1.35rem; }
   .product-grid { grid-template-columns: repeat(2, 1fr); }
   .product-layout, .cart-layout, .checkout-layout, .confirmation-layout { grid-template-columns: 1fr; gap: 28px; }
   .product-info { position: static; }
-  .promise-strip { grid-template-columns: 1fr; }
   .header-inner { flex-wrap: wrap; gap: 12px 20px; }
   .main-nav { order: 3; flex-basis: 100%; justify-content: flex-start; gap: 16px; }
   .bag-link { margin-left: auto; }

@@ -1,7 +1,8 @@
 # Nano Motion demo store
 
 A small static storefront for Nano Motion, a fictional premium activewear retailer. It is a demo:
-no real orders are placed, no payment is taken, and nothing is sent to a server.
+no real orders are placed and no payment is taken. The bag and demo orders are stored in the browser.
+The Measurement Pixel sends the events described below to OpenAI.
 
 Plain HTML, CSS, and JavaScript. No framework and no build step.
 
@@ -51,20 +52,91 @@ The parent product ID (`NM-RUN-001`) is the catalog's `group_id`.
 
 ## Measurement
 
-This layer of the site contains no advertising or measurement code. The places where
-measurement belongs are marked with a `MEASUREMENT:` comment:
+The [OpenAI Measurement Pixel](https://developers.openai.com/ads/measurement-pixel) is installed
+near the top of `<head>` on all six HTML pages and initialized with Pixel ID
+`1vU1PkihULoohTs1TNQBzy`. It uses the documented asynchronous loader, which queues calls while
+the SDK loads. Each `oaiq("measure", ...)` call lives directly at its `MEASUREMENT:` comment
+in the page script; there is no data layer, event bus, or measurement wrapper.
 
-| Where | Moment |
+Only [standard events and documented Pixel fields](https://developers.openai.com/ads/supported-events)
+are sent. Every event uses `type: "contents"`:
+
+| Page script | Moment | Event and data |
+|---|---|---|
+| `js/pages/home.js` | Home loaded | `page_viewed`: one page item, ID `home`. |
+| `js/pages/category.js` | Valid category loaded | `page_viewed`: one page item, ID `category-` plus the category ID. |
+| `js/pages/product.js` | Valid product loaded | `page_viewed` with page ID `product-` plus the product ID, followed by `contents_viewed` with the parent `product.id`, name, product price, and USD. |
+| `js/pages/product.js` | Successful add to bag | `items_added`: the added variant, quantity, per-unit price, and event amount `line.lineTotal`. |
+| `js/pages/checkout.js` | Nonempty checkout loaded | `checkout_started`: all bag variants and event amount `summary.subtotal`. |
+| `js/pages/confirmation.js` | Order first shown (`firstView` is true) | `order_created`: all order variants, event amount `order.subtotal`, and `{ event_id: order.id }` as the fourth argument. |
+
+Page items use `content_type: "page"`; product items use `content_type: "product"`.
+Commerce items use `item.itemId` (or `line.itemId`), matching the catalog CSV's `item_id`.
+Product views use the parent product ID, matching the catalog's `group_id`, because a size
+has not normally been selected at page load. No `group_id` or `variant_dict` fields are sent.
+
+Amounts stay as integer cents with `currency: "USD"`. Item amounts are per-unit prices;
+quantities are separate integers. Checkout and order event amounts exclude tax and shipping.
+There is no `page_viewed` call on the bag, checkout, or confirmation pages. Reloading a
+confirmation does not send another order event in the same tab, using the store's existing
+`firstView` sessionStorage check.
+
+The valid-email `MEASUREMENT:` comment is reserved for a later pass. This integration does
+not supply a `user` object or customer fields. The docs also describe automatic advanced
+matching controlled outside this code; keep it disabled for this pixel if no user data
+should be collected by the SDK.
+
+### Debug switch
+
+Debug is off by default. Open `index.html?debug=1` (or add `&debug=1` to a URL that already
+has parameters) to enable SDK console logging. The setting is saved as `nm_pixel_debug`
+in sessionStorage and follows navigation in the same tab. Use `?debug=0` or `&debug=0` to
+turn it off. If sessionStorage is unavailable, the URL switch still works on that page,
+but cannot persist between pages. Debug enables logging; it does not prevent event delivery.
+
+### Manual test
+
+Run `python3 tools/serve.py 4174` and use a fresh private browser window for an empty bag.
+Open `http://localhost:4174/index.html?debug=1`, then open Chrome Developer Tools with
+**Command + Option + I**:
+
+1. In **Console**, open the **Default levels** dropdown and enable **Verbose** (or select
+   all levels). The SDK uses `console.debug`, which Chrome can hide at the default level.
+   Clear the text filter, enable **Preserve log**, and reload. Look for `[oaiq] event queued`
+   entries with `eventName: "page_viewed"`. You can then filter by `oaiq`.
+2. In **Network**, enable **Preserve log**, select **All** request types, filter by
+   `bzr.openai.com`, and reload. Select the `events?pid=...` POST request.
+3. Click **Payload** beside **Headers**, then expand **Request Payload → events**. Event
+   names appear as `events[].type`; each event's contents and amounts are inside
+   `events[].data`. The order ID supplied through the `event_id` option appears as
+   `events[].id`. If the JSON is displayed as text, use **view source** or search the
+   payload for `page_viewed`. HTTP headers do not contain the event objects.
+
+Wait for each listed event request to appear before taking the next action. Expect the same
+store event names in Console and the request payload. A `202 Accepted` response confirms
+that the endpoint accepted the request; inspect its payload to verify which events it carried.
+The SDK also sends lifecycle/diagnostic records; these are not store events. Events may be
+batched together, so two events do not necessarily mean two requests. The SDK script and
+configuration load separately from `bzrcdn.openai.com`. An empty **Response** tab is not the
+event payload; inspect **Payload** instead.
+
+| Click or action | Expected events / checks |
 |---|---|
-| Every HTML page, top of `<head>` | Pixel base code |
-| `js/pages/home.js` | Home page loaded |
-| `js/pages/category.js` | Category page loaded |
-| `js/pages/product.js` | Product page loaded; item added to bag |
-| `js/pages/checkout.js` | Checkout started; valid email entered |
-| `js/pages/confirmation.js` | Order confirmed |
-
-Each comment names the data in scope at that point. All amounts are integers in cents, and an
-order carries `subtotal`, `shipping`, `tax`, and `total` separately.
+| Reload the home page with `?debug=1` | `page_viewed`, page ID `home`. |
+| Click **Running** in the header | `page_viewed`, page ID `category-running`; debug remains enabled without a URL switch. |
+| Click **AeroLite Run Tee** | `page_viewed`, then `contents_viewed`; view ID `NM-RUN-002`, item amount `4800`, USD. |
+| Click **Add to bag** before choosing a size | Size validation appears; no new measurement event. |
+| Click color **Cobalt**, size **M**, then quantity **+** once | No new event yet. |
+| Click **Add to bag** | `items_added`: ID `NM-RUN-002-COB-M`, quantity `2`, item amount `4800`, event amount `9600`, USD. |
+| Click **Continue shopping**, then **Add to bag** again | `items_added`: quantity `1`, item amount `4800`, event amount `4800`; the bag now holds three tees. |
+| Click **Continue shopping**, then **Accessories** in the header | `page_viewed`, page ID `category-accessories`. |
+| Click **Hydra Steel Bottle 24 oz**, then **Add to bag** | `page_viewed`, then `contents_viewed` for `NM-ACC-002` at `3200`; then `items_added` for `NM-ACC-002-STL`, quantity `1`, item and event amount `3200`. |
+| Click **View bag** | No new event. Subtotal is $176.00. |
+| Click **Checkout** | `checkout_started`: both variants, tee quantity `3` at `4800`, bottle quantity `1` at `3200`, event amount `17600`, USD. No `page_viewed`. |
+| Click **Fill test details** | No new event or customer data supplied by page code. |
+| Click **Place order** | `order_created` with both variants and event amount `17600`; `event_id` equals the displayed order ID. No `page_viewed`. |
+| Reload confirmation | No new order or page-view event. |
+| Open `http://localhost:4174/index.html?debug=0`, then click **Running** in the header | Console debug logging stops and stays off; page-view network events still send. |
 
 ## Product catalog
 

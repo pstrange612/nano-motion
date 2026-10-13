@@ -1,6 +1,6 @@
 // Checkout page: one page, test details only. Placing the order saves it in the
 // browser and moves to the confirmation page. No payment is processed and
-// nothing is sent to a server.
+// the demo order stays in the browser; the Pixel sends measurement events.
 (function () {
   "use strict";
 
@@ -170,4 +170,19 @@
   });
 
   // MEASUREMENT: checkout has started. In scope: summary (items, itemCount, subtotal, tax, total, currency).
+  oaiq("measure", "checkout_started", {
+    type: "contents",
+    amount: summary.subtotal,
+    currency: "USD",
+    contents: summary.items.map(function (item) {
+      return {
+        id: item.itemId,
+        name: item.name,
+        content_type: "product",
+        quantity: item.quantity,
+        amount: item.unitPrice,
+        currency: "USD"
+      };
+    })
+  });
 })();

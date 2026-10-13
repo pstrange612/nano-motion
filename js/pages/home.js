@@ -49,4 +49,10 @@
     "</section>";
 
   // MEASUREMENT: the home page has loaded.
+  oaiq("measure", "page_viewed", {
+    type: "contents",
+    contents: [
+      { id: "home", name: "Nano Motion home", content_type: "page" }
+    ]
+  });
 })();

@@ -62,4 +62,21 @@
 
   // MEASUREMENT: the order is confirmed. In scope: order (id, items, subtotal, tax, total,
   // currency, customer.email) and firstView (false when this page is reloaded).
+  if (firstView) {
+    oaiq("measure", "order_created", {
+      type: "contents",
+      amount: order.subtotal,
+      currency: "USD",
+      contents: order.items.map(function (item) {
+        return {
+          id: item.itemId,
+          name: item.name,
+          content_type: "product",
+          quantity: item.quantity,
+          amount: item.unitPrice,
+          currency: "USD"
+        };
+      })
+    }, { event_id: order.id });
+  }
 })();

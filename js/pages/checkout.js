@@ -14,6 +14,7 @@
 
   var TEST_DETAILS = {
     email: "taylor.test@example.com",
+    phone: "(415) 555-0132",
     firstName: "Taylor",
     lastName: "Test",
     address: "123 Main Street",
@@ -38,7 +39,10 @@
         '<form class="checkout-form" id="checkout-form" novalidate>' +
           '<div class="form-head"><h2>Contact</h2>' +
             '<button type="button" class="link-btn" id="fill-test">Fill test details</button></div>' +
-          field("email", "Email", "email", "email") +
+          '<div class="field-row">' +
+            field("email", "Email", "email", "email") +
+            field("phone", "Phone", "tel", "tel") +
+          "</div>" +
 
           "<h2>Shipping</h2>" +
           '<div class="field-row">' +
@@ -113,10 +117,18 @@
   document.getElementById("fill-test").addEventListener("click", function () {
     Object.keys(TEST_DETAILS).forEach(function (key) {
       var input = document.getElementById(key);
-      if (input) input.value = TEST_DETAILS[key];
+      if (input) {
+        input.value = TEST_DETAILS[key];
+        input.classList.remove("has-error");
+      }
     });
     errorBox.hidden = true;
     announceEmail();
+  });
+
+  // Clear a field's error outline as soon as the shopper types in it.
+  form.addEventListener("input", function (event) {
+    event.target.classList.remove("has-error");
   });
 
   form.addEventListener("submit", function (event) {
@@ -124,7 +136,7 @@
 
     var values = {};
     var missing = [];
-    ["email", "firstName", "lastName", "address", "city", "region", "postalCode", "country"].forEach(function (key) {
+    ["email", "phone", "firstName", "lastName", "address", "city", "region", "postalCode", "country"].forEach(function (key) {
       var input = document.getElementById(key);
       values[key] = input.value.trim();
       input.classList.toggle("has-error", !values[key]);
@@ -155,6 +167,7 @@
       total: cart.total,
       customer: {
         email: values.email,
+        phone: values.phone,
         firstName: values.firstName,
         lastName: values.lastName,
         city: values.city,

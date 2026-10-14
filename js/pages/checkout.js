@@ -52,14 +52,14 @@
             '<button type="button" class="link-btn" id="fill-test">Fill test details</button></div>' +
           '<div class="field-row">' +
             field("email", "Email", "email", "email") +
-            '<label class="field" for="phone"><span>Phone</span>' +
+            '<label class="field" for="phone"><span>Phone (national number)</span>' +
               '<span class="phone-group">' +
                 '<select id="phoneCountryCode" name="phoneCountryCode" aria-label="Country calling code" autocomplete="tel-country-code">' +
                   PHONE_CODES.map(function (c) {
                     return '<option value="' + c.code + '">' + c.label + "</option>";
                   }).join("") +
                 "</select>" +
-                '<input id="phone" name="phone" type="tel" autocomplete="tel-national" required>' +
+                '<input id="phone" name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" required>' +
               "</span>" +
             "</label>" +
           "</div>" +
@@ -116,7 +116,24 @@
 
   var form = document.getElementById("checkout-form");
   var emailInput = document.getElementById("email");
+  var phoneInput = document.getElementById("phone");
+  var phoneCode = document.getElementById("phoneCountryCode");
   var errorBox = document.getElementById("form-error");
+
+  function formatPhone() {
+    var digits = phoneInput.value.replace(/\D/g, "");
+    if (phoneCode.value === "1") {
+      digits = digits.slice(0, 10);
+      phoneInput.value = digits ? "(" + digits.slice(0, 3) : "";
+      if (digits.length > 3) phoneInput.value += ") " + digits.slice(3, 6);
+      if (digits.length > 6) phoneInput.value += "-" + digits.slice(6);
+    } else {
+      phoneInput.value = digits;
+    }
+  }
+
+  phoneInput.addEventListener("input", formatPhone);
+  phoneCode.addEventListener("change", formatPhone);
 
   function isEmail(value) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -130,6 +147,7 @@
         input.classList.remove("has-error");
       }
     });
+    formatPhone();
     errorBox.hidden = true;
   });
 
@@ -159,6 +177,21 @@
       return;
     }
 
+    var invalidLocation = false;
+    ["city", "region", "postalCode"].forEach(function (key) {
+      var value = values[key];
+      var invalid = key === "postalCode"
+        ? value.length > 32 || !/^[\p{L}\p{N} -]+$/u.test(value)
+        : value.length > 128;
+      document.getElementById(key).classList.toggle("has-error", invalid);
+      if (invalid) invalidLocation = true;
+    });
+    if (invalidLocation) {
+      errorBox.textContent = "City and state must be 128 characters or fewer. ZIP code must be 32 characters or fewer, using only letters, numbers, spaces, and hyphens.";
+      errorBox.hidden = false;
+      return;
+    }
+
     var cart = NM.cart.summary();
     var order = {
       id: NM.orders.newId(),
@@ -183,16 +216,29 @@
       }
     };
 
-    NM.orders.save(order);
+    if (!NM.orders.save(order)) {
+      errorBox.textContent = "We couldn't save your order. Your bag is unchanged. Please enable browser storage and try again.";
+      errorBox.hidden = false;
+      return;
+    }
+    try { sessionStorage.removeItem("nm_checkout_bag"); } catch (err) { /* storage unavailable */ }
     NM.cart.clear();
     window.location.href = "order-confirmation.html?order=" + encodeURIComponent(order.id);
   });
 
-  // MEASUREMENT: checkout has started. In scope: summary (items, itemCount, subtotal, tax, total, currency).
+  // MEASUREMENT: send once per tab until the bag's items or quantities change.
+  var bagKey = JSON.stringify(summary.items.map(function (item) {
+    return [item.itemId, item.quantity];
+  }).sort(function (a, b) { return a[0].localeCompare(b[0]); }));
+  try {
+    if (sessionStorage.getItem("nm_checkout_bag") === bagKey) return;
+    sessionStorage.setItem("nm_checkout_bag", bagKey);
+  } catch (err) { return; /* Cannot safely claim the checkout without storage. */ }
+
   oaiq("measure", "checkout_started", {
     type: "contents",
     amount: summary.subtotal,
-    currency: "USD",
+    currency: summary.currency,
     contents: summary.items.map(function (item) {
       return {
         id: item.itemId,
@@ -200,7 +246,7 @@
         content_type: "product",
         quantity: item.quantity,
         amount: item.unitPrice,
-        currency: "USD"
+        currency: summary.currency
       };
     })
   });

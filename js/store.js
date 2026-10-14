@@ -172,7 +172,10 @@
   // it. It is gone when the tab closes. Nothing is sent to a server.
 
   function saveOrder(order) {
-    try { sessionStorage.setItem(ORDER_KEY, JSON.stringify(order)); } catch (err) { /* storage unavailable */ }
+    try {
+      sessionStorage.setItem(ORDER_KEY, JSON.stringify(order));
+      return true;
+    } catch (err) { return false; }
   }
 
   function getLastOrder() {

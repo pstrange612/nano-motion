@@ -178,7 +178,7 @@
     oaiq("measure", "items_added", {
       type: "contents",
       amount: line.lineTotal,
-      currency: "USD",
+      currency: NM.catalog.currency,
       contents: [
         {
           id: line.itemId,
@@ -186,7 +186,7 @@
           content_type: "product",
           quantity: line.quantity,
           amount: line.unitPrice,
-          currency: "USD"
+          currency: NM.catalog.currency
         }
       ]
     });
@@ -199,7 +199,7 @@
   refresh();
 
   // MEASUREMENT: a product page has loaded. In scope: product (id, name, category, price),
-  // state.colorCode (the color shown), and selectedVariant(), which is null until the
+  // NM.catalog.currency, state.colorCode (the color shown), and selectedVariant(), which is null until the
   // shopper has chosen a size.
   oaiq("measure", "page_viewed", {
     type: "contents",
@@ -216,7 +216,7 @@
         name: product.name,
         content_type: "product",
         amount: product.price,
-        currency: "USD"
+        currency: NM.catalog.currency
       }
     ]
   });

@@ -68,8 +68,8 @@ are sent. Every event uses `type: "contents"`:
 | `js/pages/category.js` | Valid category loaded | `page_viewed`: one page item, ID `category-` plus the category ID. |
 | `js/pages/product.js` | Valid product loaded | `page_viewed` with page ID `product-` plus the product ID, followed by `contents_viewed` with the parent `product.id`, name, product price, and USD. |
 | `js/pages/product.js` | Successful add to bag | `items_added`: the added variant, quantity, per-unit price, and event amount `line.lineTotal`. |
-| `js/pages/checkout.js` | Nonempty checkout loaded | `checkout_started`: all bag variants and event amount `summary.subtotal`. |
-| `js/pages/confirmation.js` | Order first shown (`firstView` is true) | `order_created`: all order variants and event amount `order.subtotal`. Sent once per order ID; a reload does not resend it. |
+| `js/pages/checkout.js` | Nonempty checkout loaded with a different bag from the last measured checkout in this tab | `checkout_started`: all bag variants and event amount `summary.subtotal`. |
+| `js/pages/confirmation.js` | Order first claimed after hashing | `order_created`: all order variants and event amount `order.subtotal`. Sent once per order ID per tab; a reload does not resend it. |
 
 Page items use `content_type: "page"`; product items use `content_type: "product"`.
 Commerce items use `item.itemId` (or `line.itemId`), matching the catalog CSV's `item_id`.
@@ -78,14 +78,15 @@ has not normally been selected at page load. No `group_id` or `variant_dict` fie
 
 Amounts stay as integer cents with `currency: "USD"`. Item amounts are per-unit prices;
 quantities are separate integers. Checkout and order event amounts exclude tax and shipping.
-There is no `page_viewed` call on the bag, checkout, or confirmation pages. Reloading a
-confirmation does not send another order event in the same tab, using the store's existing
-`firstView` sessionStorage check.
+There is no `page_viewed` call on the bag, checkout, or confirmation pages. A sessionStorage
+marker suppresses checkout reloads for the same item IDs and quantities; a changed bag sends
+again. A separate per-order marker suppresses confirmation reloads in the same tab.
 
 ### Customer matching on purchase
 
-Automatic advanced matching is disabled for this Pixel. On the first confirmation view,
-`js/pages/confirmation.js` awaits `NMUserData.buildUserData(order.customer)`, calls
+Automatic advanced matching is disabled for this Pixel. On confirmation,
+`js/pages/confirmation.js` awaits `NMUserData.buildUserData(order.customer)`, claims the order's
+sessionStorage marker if it is not already set, calls
 `oaiq("init", { user: user })` to update the already initialized Pixel, then sends the existing
 `order_created` event. Both Pixel calls stay visible in the page script. User data belongs
 to the request, not the event's commerce payload. The checkout does not set Pixel user data;
@@ -101,20 +102,24 @@ It follows [Send user data and Normalize identifiers before hashing](https://dev
 | `phoneCountryCode` + `phone` | `phone_number_sha256` | Keep digits only, remove national leading zeroes, prepend the calling code, require 8–15 digits, then hash. |
 | `firstName` | `first_name_sha256` | Lowercase and remove all whitespace and ASCII punctuation, then hash. Preserve accents and non-ASCII punctuation. |
 | `lastName` | `last_name_sha256` | Same normalization as first name, then hash. |
-| `city` | `city` | Trim; send unhashed. |
-| `region` | `region` | Trim; send unhashed. |
-| `postalCode` | `postal_code` | Trim; send unhashed. |
+| `city` | `city` | Trim; send unhashed if at most 128 characters. |
+| `region` | `region` | Trim; send unhashed if at most 128 characters. |
+| `postalCode` | `postal_code` | Trim; send unhashed if at most 32 characters using only letters, numbers, spaces, and hyphens. |
 | `country` | `country` | Trim; send the two-letter code unhashed. |
 
 Hashes use UTF-8 and `crypto.subtle` SHA-256, encoded as lowercase hexadecimal. Empty fields
-and invalid-length phone numbers are omitted. No external ID or street address is sent.
+and invalid-length phone numbers are omitted. Checkout rejects invalid city, region, and
+postal-code values; the helper also omits them as a safety net. No external ID or street address is sent.
 Raw email, phone, and names never enter a Pixel call or integration log/storage. The store's
-existing browser order storage is unchanged.
+browser order storage now reports save failures so checkout can show an error without clearing
+the bag or leaving the page.
 
 If hashing fails or `crypto.subtle` is unavailable, confirmation sends `order_created`
-without any user data. The existing `firstView` flag is set before awaiting hashing, so a
-reload in the same tab still cannot send a second purchase. Web Crypto is available in
-supported browsers on HTTPS or localhost.
+without any user data. The seen marker is checked and set after hashing, immediately before
+the Pixel calls with no intervening await. A reload during hashing can still send the purchase;
+another run finishing later sees the marker and skips it. If a measurement marker cannot be
+read or written, that checkout or purchase event is skipped to avoid an unguarded duplicate.
+Web Crypto is available in supported browsers on HTTPS or localhost.
 
 ### Debug switch
 
@@ -163,6 +168,7 @@ event payload; inspect **Payload** instead.
 | Click **Hydra Steel Bottle 24 oz**, then **Add to bag** | `page_viewed`, then `contents_viewed` for `NM-ACC-002` at `3200`; then `items_added` for `NM-ACC-002-STL`, quantity `1`, item and event amount `3200`. |
 | Click **View bag** | No new event. Subtotal is $176.00. |
 | Click **Checkout** | `checkout_started`: both variants, tee quantity `3` at `4800`, bottle quantity `1` at `3200`, event amount `17600`, USD. No `page_viewed`. |
+| Reload checkout, then change a quantity in the bag and return to checkout | The reload sends nothing; the changed bag sends another `checkout_started`. |
 | Click **Fill test details** | No new event or Pixel user update on checkout. |
 | Click **Place order** | Confirmation hashes the customer fields, updates Pixel user data, then sends `order_created` with both variants and event amount `17600`. No `page_viewed`. Check request-level `user.in` as described below. |
 | Reload confirmation | No new order or page-view event. |
@@ -206,10 +212,12 @@ initialization/diagnostic request may precede the user update; inspect the purch
 | First name `Mary Jane` | `maryjane` | `f08f448a5e7a9dc3619bb7c129f6a7d5fc6af002cea17ad71dfdc1c68f4d4e0e` |
 | Last name `O'Connor` | `oconnor` | `7a0fbfdf40cbeb97429bdb88f512cecd27f0d44b7e57986ab578423bb61936ac` |
 
-The docs describe an international phone number; this store uses two inputs. The helper
-treats the phone input as a national number and joins it to the separate calling code,
-after removing national leading zeroes. It does not infer whether a shopper also typed
-the calling code into the national-number input.
+The docs describe an international phone number; this store uses two inputs. Enter only the
+national number in the phone field; the calling code always comes from the dropdown. The
+field strips non-digits, caps US numbers at 10 digits, and displays them as `(415) 555-0132`.
+Other calling codes leave digits unformatted and uncapped; changing the dropdown reformats
+the existing input. The helper still removes national leading zeroes, prepends the selected
+calling code, and requires 8–15 digits in the full number before hashing.
 
 Run the dependency-free regression tests with Node.js 18 or later:
 
@@ -217,9 +225,9 @@ Run the dependency-free regression tests with Node.js 18 or later:
 node --test tests/user-data.test.cjs
 ```
 
-They cover normalization, omission of empty/invalid fields, the order of asynchronous
-hashing and Pixel calls, hashing failures, confirmation reloads, and unchanged checkout
-validation/test-fill behavior. No Pixel requests are sent by these tests.
+They cover normalization, location limits, phone input formatting, checkout reloads, hashing
+failures, confirmation reloads during hashing, storage failures, and checkout validation/test-fill
+behavior. No Pixel requests are sent by these tests.
 
 ## Product catalog
 

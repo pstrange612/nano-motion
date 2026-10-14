@@ -50,6 +50,8 @@ window.NMUserData = (function () {
     };
     Object.keys(location).forEach(function (field) {
       var value = String(location[field] || "").trim();
+      if ((field === "city" || field === "region") && value.length > 128) return;
+      if (field === "postal_code" && (value.length > 32 || !/^[\p{L}\p{N} -]+$/u.test(value))) return;
       if (value) user[field] = value;
     });
     return user;

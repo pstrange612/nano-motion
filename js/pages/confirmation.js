@@ -51,41 +51,35 @@
       "</div>" +
     "</section>";
 
-  // firstView is true only the first time this order's confirmation is shown,
-  // so a page reload can be told apart from a new order.
-  var seenKey = "nm_order_seen_" + order.id;
-  var firstView = false;
+  var user = null;
   try {
-    firstView = !sessionStorage.getItem(seenKey);
+    user = await NMUserData.buildUserData(order.customer);
+  } catch (err) { /* Hashing unavailable or failed: send the purchase without user data. */ }
+
+  // MEASUREMENT: after hashing, claim this order once per tab before sending.
+  var seenKey = "nm_order_seen_" + order.id;
+  try {
+    if (sessionStorage.getItem(seenKey)) return;
     sessionStorage.setItem(seenKey, "1");
-  } catch (err) { /* storage unavailable */ }
+  } catch (err) { return; /* Cannot safely claim the order without storage. */ }
 
-  // MEASUREMENT: the order is confirmed. In scope: order (id, items, subtotal, tax, total,
-  // currency, customer) and firstView (false when this page is reloaded).
-  if (firstView) {
-    var user = null;
-    try {
-      user = await NMUserData.buildUserData(order.customer);
-    } catch (err) { /* Hashing unavailable or failed: send the purchase without user data. */ }
-
-    if (user) {
-      oaiq("init", { user: user });
-    }
-
-    oaiq("measure", "order_created", {
-      type: "contents",
-      amount: order.subtotal,
-      currency: "USD",
-      contents: order.items.map(function (item) {
-        return {
-          id: item.itemId,
-          name: item.name,
-          content_type: "product",
-          quantity: item.quantity,
-          amount: item.unitPrice,
-          currency: "USD"
-        };
-      })
-    });
+  if (user) {
+    oaiq("init", { user: user });
   }
+
+  oaiq("measure", "order_created", {
+    type: "contents",
+    amount: order.subtotal,
+    currency: order.currency,
+    contents: order.items.map(function (item) {
+      return {
+        id: item.itemId,
+        name: item.name,
+        content_type: "product",
+        quantity: item.quantity,
+        amount: item.unitPrice,
+        currency: order.currency
+      };
+    })
+  });
 })();

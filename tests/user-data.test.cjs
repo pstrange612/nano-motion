@@ -85,10 +85,10 @@ function storage() {
   };
 }
 
-function confirmation(userData, sessionStorage = storage()) {
+function confirmation(userData, sessionStorage = storage(), currency = "USD") {
   const calls = [];
   const order = {
-    id: "NM-TEST-ORDER", customer: testDetails, subtotal: 9600, tax: 768, total: 10368, currency: "USD",
+    id: "NM-TEST-ORDER", customer: testDetails, subtotal: 9600, tax: 768, total: 10368, currency,
     items: [{ itemId: "NM-RUN-002-COB-M", name: "AeroLite Run Tee", quantity: 2, unitPrice: 4800, lineTotal: 9600, image: "test.svg" }]
   };
   const context = vm.createContext({
@@ -132,7 +132,7 @@ test("missing crypto.subtle or a rejected digest still sends one purchase withou
 
 function checkout(sessionStorage = storage(), items = [
   { itemId: "NM-RUN-002-COB-M", name: "Tee", quantity: 2, unitPrice: 4800, lineTotal: 9600 }
-], saveSucceeds = true) {
+], saveSucceeds = true, currency = "USD") {
   const nodes = new Map();
   const calls = [];
   let savedOrder;
@@ -153,7 +153,7 @@ function checkout(sessionStorage = storage(), items = [
     return nodes.get(id);
   }
   node("phoneCountryCode").value = "1";
-  const summary = { items, subtotal: 9600, tax: 768, total: 10368, currency: "USD" };
+  const summary = { items, subtotal: 9600, tax: 768, total: 10368, currency };
   const location = {};
   const context = vm.createContext({
     document: { getElementById: node }, window: { location }, sessionStorage,
@@ -271,6 +271,23 @@ test("checkout reload sends once for the same bag and again for changed items or
   assert.equal(checkout(session, changed.slice(0, 1)).calls.length, 1);
   assert.equal(checkout(session, items).calls.length, 1);
   assert.equal(checkout(storage(), items).calls.length, 1);
+});
+
+test("checkout and purchase use the store currency for the event and every item", async () => {
+  const checkoutPage = checkout(storage(), undefined, true, "EUR");
+  const confirmationPage = confirmation(helper(), storage(), "GBP");
+  await confirmationPage.run();
+  for (const [calls, eventName, currency] of [
+    [checkoutPage.calls, "checkout_started", "EUR"],
+    [confirmationPage.calls, "order_created", "GBP"]
+  ]) {
+    const events = calls.filter(call => call[0] === "measure" && call[1] === eventName);
+    assert.equal(events.length, 1);
+    const data = events[0][2];
+    assert.equal(data.currency, currency);
+    assert.ok(data.contents.length);
+    for (const item of data.contents) assert.equal(item.currency, currency);
+  }
 });
 
 test("placing an order allows the same bag to start checkout again in the same tab", () => {

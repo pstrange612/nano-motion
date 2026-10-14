@@ -238,7 +238,7 @@
   oaiq("measure", "checkout_started", {
     type: "contents",
     amount: summary.subtotal,
-    currency: "USD",
+    currency: summary.currency,
     contents: summary.items.map(function (item) {
       return {
         id: item.itemId,
@@ -246,7 +246,7 @@
         content_type: "product",
         quantity: item.quantity,
         amount: item.unitPrice,
-        currency: "USD"
+        currency: summary.currency
       };
     })
   });

@@ -70,7 +70,7 @@
   oaiq("measure", "order_created", {
     type: "contents",
     amount: order.subtotal,
-    currency: "USD",
+    currency: order.currency,
     contents: order.items.map(function (item) {
       return {
         id: item.itemId,
@@ -78,7 +78,7 @@
         content_type: "product",
         quantity: item.quantity,
         amount: item.unitPrice,
-        currency: "USD"
+        currency: order.currency
       };
     })
   });

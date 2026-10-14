@@ -221,6 +221,7 @@
       errorBox.hidden = false;
       return;
     }
+    try { sessionStorage.removeItem("nm_checkout_bag"); } catch (err) { /* storage unavailable */ }
     NM.cart.clear();
     window.location.href = "order-confirmation.html?order=" + encodeURIComponent(order.id);
   });

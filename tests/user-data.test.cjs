@@ -79,7 +79,10 @@ test("builder includes only supported, nonempty fields and never changes its inp
 
 function storage() {
   const stored = new Map();
-  return { getItem: key => stored.get(key), setItem: (key, value) => stored.set(key, value) };
+  return {
+    getItem: key => stored.get(key), setItem: (key, value) => stored.set(key, value),
+    removeItem: key => stored.delete(key)
+  };
 }
 
 function confirmation(userData, sessionStorage = storage()) {
@@ -268,6 +271,19 @@ test("checkout reload sends once for the same bag and again for changed items or
   assert.equal(checkout(session, changed.slice(0, 1)).calls.length, 1);
   assert.equal(checkout(session, items).calls.length, 1);
   assert.equal(checkout(storage(), items).calls.length, 1);
+});
+
+test("placing an order allows the same bag to start checkout again in the same tab", () => {
+  const session = storage();
+  const first = checkout(session);
+  assert.deepEqual(first.calls.map(call => call.slice(0, 2)), [["measure", "checkout_started"]]);
+  first.node("fill-test").handlers.click();
+  first.submit();
+  assert.ok(first.savedOrder);
+  assert.equal(session.getItem("nm_checkout_bag"), undefined);
+  const second = checkout(session);
+  assert.deepEqual(second.calls.map(call => call.slice(0, 2)), [["measure", "checkout_started"]]);
+  assert.equal(checkout(session).calls.length, 0);
 });
 
 test("reload during hashing sends exactly one purchase even if the earlier run later finishes", async () => {

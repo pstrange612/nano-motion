@@ -86,6 +86,6 @@
           currency: "USD"
         };
       })
-    }, { event_id: order.id });
+    });
   }
 })();

@@ -68,6 +68,7 @@ are sent. Every event uses `type: "contents"`:
 | `js/pages/category.js` | Valid category loaded | `page_viewed`: one page item, ID `category-` plus the category ID. |
 | `js/pages/product.js` | Valid product loaded | `page_viewed` with page ID `product-` plus the product ID, followed by `contents_viewed` with the parent `product.id`, name, product price, and USD. |
 | `js/pages/product.js` | Successful add to bag | `items_added`: the added variant, quantity, per-unit price, and event amount `line.lineTotal`. |
+| `js/pages/cart.js` | Bag loaded | `page_viewed`: one page item, ID `cart`. The bag has no standard event of its own, so a page view marks this funnel step. |
 | `js/pages/checkout.js` | Nonempty checkout loaded with a different bag from the last measured checkout in this tab | `checkout_started`: all bag variants and event amount `summary.subtotal`. |
 | `js/pages/confirmation.js` | Order first claimed after hashing | `order_created`: all order variants and event amount `order.subtotal`. Sent once per order ID per tab; a reload does not resend it. |
 
@@ -76,9 +77,9 @@ Commerce items use `item.itemId` (or `line.itemId`), matching the catalog CSV's 
 Product views use the parent product ID, matching the catalog's `group_id`, because a size
 has not normally been selected at page load. No `group_id` or `variant_dict` fields are sent.
 
-Amounts stay as integer cents with `currency: "USD"`. Item amounts are per-unit prices;
+Amounts stay as integer cents, with the currency taken from the store data (`USD` in the catalog). Item amounts are per-unit prices;
 quantities are separate integers. Checkout and order event amounts exclude tax and shipping.
-There is no `page_viewed` call on the bag, checkout, or confirmation pages. A sessionStorage
+There is no `page_viewed` call on the checkout or confirmation pages; they send their own events. A sessionStorage
 marker suppresses checkout reloads for the same item IDs and quantities; a changed bag sends
 again. A separate per-order marker suppresses confirmation reloads in the same tab.
 
@@ -166,7 +167,7 @@ event payload; inspect **Payload** instead.
 | Click **Continue shopping**, then **Add to bag** again | `items_added`: quantity `1`, item amount `4800`, event amount `4800`; the bag now holds three tees. |
 | Click **Continue shopping**, then **Accessories** in the header | `page_viewed`, page ID `category-accessories`. |
 | Click **Hydra Steel Bottle 24 oz**, then **Add to bag** | `page_viewed`, then `contents_viewed` for `NM-ACC-002` at `3200`; then `items_added` for `NM-ACC-002-STL`, quantity `1`, item and event amount `3200`. |
-| Click **View bag** | No new event. Subtotal is $176.00. |
+| Click **View bag** | `page_viewed`, page ID `cart`. Subtotal is $176.00. |
 | Click **Checkout** | `checkout_started`: both variants, tee quantity `3` at `4800`, bottle quantity `1` at `3200`, event amount `17600`, USD. No `page_viewed`. |
 | Reload checkout, then change a quantity in the bag and return to checkout | The reload sends nothing; the changed bag sends another `checkout_started`. |
 | Click **Fill test details** | No new event or Pixel user update on checkout. |

@@ -79,4 +79,13 @@
   });
 
   render();
+
+  // MEASUREMENT: the bag page has loaded. It has no standard event of its own, so a page
+  // view marks this step of the funnel.
+  oaiq("measure", "page_viewed", {
+    type: "contents",
+    contents: [
+      { id: "cart", name: "Nano Motion bag", content_type: "page" }
+    ]
+  });
 })();

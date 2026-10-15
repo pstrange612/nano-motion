@@ -1,250 +1,151 @@
 # Nano Motion demo store
 
-A small static storefront for Nano Motion, a fictional premium activewear retailer. It is a demo:
-no real orders are placed and no payment is taken. The bag and demo orders are stored in the browser.
-The Measurement Pixel sends the events described below to OpenAI.
+A static storefront for Nano Motion, a fictional activewear retailer, instrumented with the
+[OpenAI Measurement Pixel](https://developers.openai.com/ads/measurement-pixel).
 
-Plain HTML, CSS, and JavaScript. No framework and no build step.
+**Live site:** https://pstrange612.github.io/nano-motion/
 
-## Run it locally
+This is a demo. No real orders are placed and no payment is taken. The bag and orders are stored
+in the browser.
+
+## Tech stack
+
+- Plain HTML, CSS, and JavaScript. No framework, no bundler, no build step.
+- Hosted on GitHub Pages. All links are relative, so the site runs under any sub-path.
+- Python 3 for the local server and asset generation. Node.js 18+ only for the tests.
+
+## Project structure
+
+```
+├── index.html, category.html, product.html,      Six pages, each loading the Pixel in <head>
+│   cart.html, checkout.html, order-confirmation.html
+├── js/
+│   ├── products.js        Product catalog (single source of truth; prices in cents)
+│   ├── store.js           Catalog lookups, bag, order storage, header and footer
+│   ├── user-data.js       Customer data normalization and SHA-256 hashing
+│   └── pages/             One script per page, including that page's Pixel calls
+├── css/styles.css
+├── images/                Generated product illustrations
+├── catalog/               Example product feed (CSV), one row per variant
+├── tools/
+│   ├── serve.py           Local server
+│   └── build_assets.py    Regenerates images/ and catalog/ from js/products.js
+└── tests/                 Tests for hashing and duplicate-event guards
+```
+
+## Run locally
 
 ```bash
 python3 tools/serve.py
 ```
 
-Then open http://localhost:4173.
+Open http://localhost:4173. To use a different port, pass it as an argument:
+`python3 tools/serve.py 4174`.
 
-## Shopper journey
+## Pixel implementation
 
-| Step | Page | URL |
-|---|---|---|
-| Home | `index.html` | `/` |
-| Category | `category.html` | `/category.html?c=running` |
-| Product | `product.html` | `/product.html?id=NM-RUN-001` |
-| Bag | `cart.html` | `/cart.html` |
-| Checkout | `checkout.html` | `/checkout.html` |
-| Confirmation | `order-confirmation.html` | `/order-confirmation.html?order=NM-XXXX` |
+### Base code
 
-## Files
+Every page loads the Pixel near the top of `<head>` using the documented asynchronous loader,
+then calls `oaiq("init", { pixelId, debug })`. Calls made before the SDK finishes loading are
+queued.
 
-| Path | What it is |
+### Events
+
+Each `oaiq("measure", ...)` call is written directly in its page script, marked with a
+`MEASUREMENT:` comment. There is no data layer or wrapper, so each event can be read where it
+fires. Only [standard events](https://developers.openai.com/ads/supported-events) and documented
+Pixel fields are used, and every event has `type: "contents"`.
+
+| Trigger | Event | Payload | File |
+|---|---|---|---|
+| Home, category, or bag page loads | `page_viewed` | One `page` item (`home`, `category-<id>`, `cart`) | `home.js`, `category.js`, `cart.js` |
+| Product page loads | `page_viewed`, then `contents_viewed` | Page item; then the parent product ID, name, unit price | `product.js` |
+| Add to bag succeeds | `items_added` | Variant ID, quantity, unit price; event amount = unit price × quantity | `product.js` |
+| Checkout page loads with items | `checkout_started` | All bag items; event amount = subtotal | `checkout.js` |
+| Confirmation page loads | `order_created` | All order items; event amount = subtotal; customer data | `confirmation.js` |
+
+### Data conventions
+
+- **Amounts** are integers in minor units (`4800` = $48.00), always with a currency code taken
+  from the catalog. Item `amount` is the unit price; `quantity` is separate.
+- **Event amounts** for checkout and purchase are the subtotal, excluding tax and shipping.
+- **Item IDs** are variant IDs (`NM-RUN-002-COB-M`) that match `item_id` in the product feed.
+  `contents_viewed` uses the parent product ID (`NM-RUN-002`, the feed's `group_id`) because no
+  size is selected when the page loads.
+- **Event IDs** are not set; the SDK generates them. A shared `event_id` is only needed to
+  deduplicate against server-side Conversions API events, which this site does not send.
+
+### Duplicate guards
+
+- `order_created` is sent once per order ID. A `sessionStorage` marker stops a reload of the
+  confirmation page from resending it.
+- `checkout_started` is not resent when checkout is reloaded with the same bag. A changed bag
+  sends it again.
+- If a marker can't be read or written, the event is skipped rather than risk a duplicate.
+
+### Customer data
+
+Automatic advanced matching is disabled for this Pixel, so the confirmation page supplies
+customer data itself:
+
+1. `js/user-data.js` normalizes email, phone, first name, and last name as the
+   [docs](https://developers.openai.com/ads/measurement-pixel) specify, then hashes them with
+   SHA-256 (`crypto.subtle`, lowercase hex). City, region, postal code, and two-letter country are
+   sent unhashed. Empty or invalid fields are omitted.
+2. `confirmation.js` calls `oaiq("init", { user })` to add the user data to the already
+   initialized Pixel, then sends `order_created`.
+
+Raw email, phone, and names are never passed to the Pixel. If hashing is unavailable, the
+purchase is still sent, without user data.
+
+### Debug mode
+
+Add `?debug=1` to any URL to turn on the SDK's console logging. The setting is saved in
+`sessionStorage` and carries across pages in the same tab; `?debug=0` turns it off. Debug mode
+only adds logging; events are sent either way.
+
+## Verify on the live site
+
+1. In a private Chrome window, open
+   https://pstrange612.github.io/nano-motion/index.html?debug=1 and open DevTools.
+2. **Console:** include the **Verbose** level and filter by `oaiq` to see `event queued` logs.
+3. **Network:** filter by `bzr`, select an `events?pid=...` POST, and open **Payload**. Event
+   names are in `events[].type`; payloads are in `events[].data`. One request can carry several
+   events.
+
+| Action | Expected |
 |---|---|
-| `js/products.js` | The product catalog. Single source of truth. Prices are integers in cents. |
-| `js/store.js` | Shared logic: catalog lookups, the bag, order storage, header and footer. |
-| `js/pages/*.js` | One script per page. |
-| `js/user-data.js` | Reusable customer normalization and SHA-256 hashing for the Pixel. |
-| `css/styles.css` | All styling. |
-| `images/` | Product illustrations, generated by `tools/build_assets.py`. |
-| `catalog/nano-motion-catalog.csv` | Product feed in OpenAI's product file format, one row per variant. Generated. |
-| `tools/build_assets.py` | Regenerates the images and the catalog CSV from `js/products.js`. |
-| `tools/serve.py` | Local test server. |
+| **Running** → **AeroLite Run Tee** | `page_viewed`, then `contents_viewed` for `NM-RUN-002`, `4800` USD |
+| **Cobalt**, size **M**, quantity 2 → **Add to bag** | `items_added`: `NM-RUN-002-COB-M`, quantity `2`, amount `9600` |
+| **View bag** → **Checkout** | `page_viewed` (`cart`), then `checkout_started`, amount `9600` |
+| **Fill test details** → **Place order** | `order_created`, amount `9600`, with a `user` object |
+| Reload the confirmation page | No new events |
 
-## Item IDs
+To simulate an ad click, open `index.html?oppref=demo-click-123`. The SDK stores the value in a
+first-party `__oppref` cookie and includes `oppref` on later requests. The value is made up, so
+this shows the capture only, not a real attributed click.
 
-Every purchasable variant has its own item ID, and the same ID is used on the site and in the catalog CSV.
-
-| Product type | Example |
-|---|---|
-| Sizes and colors | `NM-RUN-001-BLK-M` |
-| Colors only | `NM-ACC-002-STL` |
-| Single variant | `NM-YOG-001` |
-
-The parent product ID (`NM-RUN-001`) is the catalog's `group_id`.
-
-## Measurement
-
-The [OpenAI Measurement Pixel](https://developers.openai.com/ads/measurement-pixel) is installed
-near the top of `<head>` on all six HTML pages and initialized with Pixel ID
-`1vU1PkihULoohTs1TNQBzy`. It uses the documented asynchronous loader, which queues calls while
-the SDK loads. Each `oaiq("measure", ...)` call lives directly at its `MEASUREMENT:` comment
-in the page script; there is no data layer, event bus, or measurement wrapper.
-
-Only [standard events and documented Pixel fields](https://developers.openai.com/ads/supported-events)
-are sent. Every event uses `type: "contents"`:
-
-| Page script | Moment | Event and data |
-|---|---|---|
-| `js/pages/home.js` | Home loaded | `page_viewed`: one page item, ID `home`. |
-| `js/pages/category.js` | Valid category loaded | `page_viewed`: one page item, ID `category-` plus the category ID. |
-| `js/pages/product.js` | Valid product loaded | `page_viewed` with page ID `product-` plus the product ID, followed by `contents_viewed` with the parent `product.id`, name, product price, and USD. |
-| `js/pages/product.js` | Successful add to bag | `items_added`: the added variant, quantity, per-unit price, and event amount `line.lineTotal`. |
-| `js/pages/cart.js` | Bag loaded | `page_viewed`: one page item, ID `cart`. The bag has no standard event of its own, so a page view marks this funnel step. |
-| `js/pages/checkout.js` | Nonempty checkout loaded with a different bag from the last measured checkout in this tab | `checkout_started`: all bag variants and event amount `summary.subtotal`. |
-| `js/pages/confirmation.js` | Order first claimed after hashing | `order_created`: all order variants and event amount `order.subtotal`. Sent once per order ID per tab; a reload does not resend it. |
-
-Page items use `content_type: "page"`; product items use `content_type: "product"`.
-Commerce items use `item.itemId` (or `line.itemId`), matching the catalog CSV's `item_id`.
-Product views use the parent product ID, matching the catalog's `group_id`, because a size
-has not normally been selected at page load. No `group_id` or `variant_dict` fields are sent.
-
-Amounts stay as integer cents, with the currency taken from the store data (`USD` in the catalog). Item amounts are per-unit prices;
-quantities are separate integers. Checkout and order event amounts exclude tax and shipping.
-There is no `page_viewed` call on the checkout or confirmation pages; they send their own events. A sessionStorage
-marker suppresses checkout reloads for the same item IDs and quantities; a changed bag sends
-again. A separate per-order marker suppresses confirmation reloads in the same tab.
-
-### Customer matching on purchase
-
-Automatic advanced matching is disabled for this Pixel. On confirmation,
-`js/pages/confirmation.js` awaits `NMUserData.buildUserData(order.customer)`, claims the order's
-sessionStorage marker if it is not already set, calls
-`oaiq("init", { user: user })` to update the already initialized Pixel, then sends the existing
-`order_created` event. Both Pixel calls stay visible in the page script. User data belongs
-to the request, not the event's commerce payload. The checkout does not set Pixel user data;
-its unused email-available hook has been removed.
-
-`js/user-data.js` is loaded before the confirmation script. It contains only reusable
-normalization, hashing, and user-object construction, with no page or storage logic.
-It follows [Send user data and Normalize identifiers before hashing](https://developers.openai.com/ads/measurement-pixel):
-
-| `order.customer` field | Pixel user field | Preparation |
-|---|---|---|
-| `email` | `email_sha256` | Trim and lowercase, then hash. |
-| `phoneCountryCode` + `phone` | `phone_number_sha256` | Keep digits only, remove national leading zeroes, prepend the calling code, require 8–15 digits, then hash. |
-| `firstName` | `first_name_sha256` | Lowercase and remove all whitespace and ASCII punctuation, then hash. Preserve accents and non-ASCII punctuation. |
-| `lastName` | `last_name_sha256` | Same normalization as first name, then hash. |
-| `city` | `city` | Trim; send unhashed if at most 128 characters. |
-| `region` | `region` | Trim; send unhashed if at most 128 characters. |
-| `postalCode` | `postal_code` | Trim; send unhashed if at most 32 characters using only letters, numbers, spaces, and hyphens. |
-| `country` | `country` | Trim; send the two-letter code unhashed. |
-
-Hashes use UTF-8 and `crypto.subtle` SHA-256, encoded as lowercase hexadecimal. Empty fields
-and invalid-length phone numbers are omitted. Checkout rejects invalid city, region, and
-postal-code values; the helper also omits them as a safety net. No external ID or street address is sent.
-Raw email, phone, and names never enter a Pixel call or integration log/storage. The store's
-browser order storage now reports save failures so checkout can show an error without clearing
-the bag or leaving the page.
-
-If hashing fails or `crypto.subtle` is unavailable, confirmation sends `order_created`
-without any user data. The seen marker is checked and set after hashing, immediately before
-the Pixel calls with no intervening await. A reload during hashing can still send the purchase;
-another run finishing later sees the marker and skips it. If a measurement marker cannot be
-read or written, that checkout or purchase event is skipped to avoid an unguarded duplicate.
-Web Crypto is available in supported browsers on HTTPS or localhost.
-
-### Debug switch
-
-Debug is off by default. Open `index.html?debug=1` (or add `&debug=1` to a URL that already
-has parameters) to enable SDK console logging. The setting is saved as `nm_pixel_debug`
-in sessionStorage and follows navigation in the same tab. Use `?debug=0` or `&debug=0` to
-turn it off. If sessionStorage is unavailable, the URL switch still works on that page,
-but cannot persist between pages. Debug enables logging; it does not prevent event delivery.
-
-### Manual test
-
-Run `python3 tools/serve.py 4174` and use a fresh private browser window for an empty bag.
-Open `http://localhost:4174/index.html?debug=1`, then open Chrome Developer Tools with
-**Command + Option + I**:
-
-1. In **Console**, open the **Default levels** dropdown and enable **Verbose** (or select
-   all levels). The SDK uses `console.debug`, which Chrome can hide at the default level.
-   Clear the text filter, enable **Preserve log**, and reload. Look for `[oaiq] event queued`
-   entries with `eventName: "page_viewed"`. You can then filter by `oaiq`.
-2. In **Network**, enable **Preserve log**, select **All** request types, filter by
-   `bzr.openai.com`, and reload. Select the `events?pid=...` POST request.
-3. Click **Payload** beside **Headers**, then expand **Request Payload → events**. Event
-   names appear as `events[].type`; each event's contents and amounts are inside
-   `events[].data`. Each event's `events[].id` is generated by the SDK. If the JSON is
-   displayed as text, use **view source** or search the payload for `page_viewed`. HTTP
-   headers do not contain the event objects.
-
-Wait for each listed event request to appear before taking the next action. Expect the same
-store event names in Console and the request payload. A `202 Accepted` response confirms
-that the endpoint accepted the request; inspect its payload to verify which events it carried.
-The SDK also sends lifecycle/diagnostic records; these are not store events. Events may be
-batched together, so two events do not necessarily mean two requests. The SDK script and
-configuration load separately from `bzrcdn.openai.com`. An empty **Response** tab is not the
-event payload; inspect **Payload** instead.
-
-| Click or action | Expected events / checks |
-|---|---|
-| Reload the home page with `?debug=1` | `page_viewed`, page ID `home`. |
-| Click **Running** in the header | `page_viewed`, page ID `category-running`; debug remains enabled without a URL switch. |
-| Click **AeroLite Run Tee** | `page_viewed`, then `contents_viewed`; view ID `NM-RUN-002`, item amount `4800`, USD. |
-| Click **Add to bag** before choosing a size | Size validation appears; no new measurement event. |
-| Click color **Cobalt**, size **M**, then quantity **+** once | No new event yet. |
-| Click **Add to bag** | `items_added`: ID `NM-RUN-002-COB-M`, quantity `2`, item amount `4800`, event amount `9600`, USD. |
-| Click **Continue shopping**, then **Add to bag** again | `items_added`: quantity `1`, item amount `4800`, event amount `4800`; the bag now holds three tees. |
-| Click **Continue shopping**, then **Accessories** in the header | `page_viewed`, page ID `category-accessories`. |
-| Click **Hydra Steel Bottle 24 oz**, then **Add to bag** | `page_viewed`, then `contents_viewed` for `NM-ACC-002` at `3200`; then `items_added` for `NM-ACC-002-STL`, quantity `1`, item and event amount `3200`. |
-| Click **View bag** | `page_viewed`, page ID `cart`. Subtotal is $176.00. |
-| Click **Checkout** | `checkout_started`: both variants, tee quantity `3` at `4800`, bottle quantity `1` at `3200`, event amount `17600`, USD. No `page_viewed`. |
-| Reload checkout, then change a quantity in the bag and return to checkout | The reload sends nothing; the changed bag sends another `checkout_started`. |
-| Click **Fill test details** | No new event or Pixel user update on checkout. |
-| Click **Place order** | Confirmation hashes the customer fields, updates Pixel user data, then sends `order_created` with both variants and event amount `17600`. No `page_viewed`. Check request-level `user.in` as described below. |
-| Reload confirmation | No new order or page-view event. |
-| Open `http://localhost:4174/index.html?debug=0`, then click **Running** in the header | Console debug logging stops and stays off; page-view network events still send. |
-
-### Expected purchase user data
-
-After **Fill test details → Place order**, select the `events?pid=...` POST that contains
-`events[].type: "order_created"`. In **Payload → Request Payload → user → in**, the current
-SDK serializes the user object as follows (the order of keys does not matter):
-
-```json
-{
-  "em": "0e9efc2e0533e55ad093e84430b16a10881e17c7204f2c6a2103849a9c37badf",
-  "ph": "11072303eb5c8cb5c5a1ebb762f11b37b07131265b46fdfe1276196bfbd3ca51",
-  "fn": "8e924025a26c584ad4ac6365116e09b852ae6b7016da4c0851e269348d93c228",
-  "ln": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-  "ct": "San Francisco",
-  "rg": "CA",
-  "pc": "94107",
-  "co": "US"
-}
-```
-
-The four hashes are for normalized `taylor.test@example.com`, `14155550132`, `taylor`, and
-`test`, respectively. `em`, `ph`, `fn`, and `ln` correspond to the four documented hash
-fields; `ct`, `rg`, `pc`, and `co` correspond to city, region, postal code, and country.
-These abbreviated keys are the current SDK's wire format, verified with its serializer,
-and may change with SDK versions. Site code uses the documented full field names.
-User data is alongside `events`, not in HTTP headers or `events[].data`. The first
-initialization/diagnostic request may precede the user update; inspect the purchase request.
-
-### Normalization examples
-
-| Input | Normalized value | SHA-256 |
-|---|---|---|
-| Email `User@User.com` | `user@user.com` | `b238c595b84321b35b8e57610c49523d4e3b9b5b5d090923e9e54f4b929bedba` |
-| Email `user@user.com` (also ` user@user.com `) | `user@user.com` | `b238c595b84321b35b8e57610c49523d4e3b9b5b5d090923e9e54f4b929bedba` |
-| Phone `(415) 555-0132`, calling code `1` | `14155550132` | `11072303eb5c8cb5c5a1ebb762f11b37b07131265b46fdfe1276196bfbd3ca51` |
-| Phone `07911 123456`, calling code `44` | `447911123456` | `40b5c38342a9c584ec707e8679b003f8c779c6aaa138c976ef94e049cc05208f` |
-| First name `Mary Jane` | `maryjane` | `f08f448a5e7a9dc3619bb7c129f6a7d5fc6af002cea17ad71dfdc1c68f4d4e0e` |
-| Last name `O'Connor` | `oconnor` | `7a0fbfdf40cbeb97429bdb88f512cecd27f0d44b7e57986ab578423bb61936ac` |
-
-The docs describe an international phone number; this store uses two inputs. Enter only the
-national number in the phone field; the calling code always comes from the dropdown. The
-field strips non-digits, caps US numbers at 10 digits, and displays them as `(415) 555-0132`.
-Other calling codes leave digits unformatted and uncapped; changing the dropdown reformats
-the existing input. The helper still removes national leading zeroes, prepends the selected
-calling code, and requires 8–15 digits in the full number before hashing.
-
-Run the dependency-free regression tests with Node.js 18 or later:
+## Tests
 
 ```bash
 node --test tests/user-data.test.cjs
 ```
 
-They cover normalization, location limits, phone input formatting, checkout reloads, hashing
-failures, confirmation reloads during hashing, storage failures, and checkout validation/test-fill
-behavior. No Pixel requests are sent by these tests.
+The tests cover normalization and hashing, phone input handling, checkout and confirmation
+reload guards, and storage failures. They don't send Pixel requests.
 
-## Product catalog
+## Product feed
 
-`catalog/nano-motion-catalog.csv` illustrates Nano Motion's product feed in OpenAI's product
-file format: one row per variant, with the same `item_id` values the site uses. Its product and
-image URLs use a stand-in production domain, not this demo site's addresses. Rebuild it with:
+`catalog/nano-motion-catalog.csv` is an example feed in OpenAI's product file format, one row per
+variant, using the same item IDs as the site. Its URLs point to a stand-in domain
+(`nanomotion.example`). To regenerate it along with the images:
 
 ```bash
 python3 tools/build_assets.py
 ```
 
-## Deploy on GitHub Pages
+## Not implemented
 
-1. Create a public GitHub repository and push this folder to its `main` branch.
-2. In the repository, open Settings, then Pages.
-3. Under "Build and deployment", choose "Deploy from a branch", branch `main`, folder `/ (root)`.
-4. The site appears at `https://<github-username>.github.io/<repo-name>/` after a minute or two.
-
-All links in the site are relative, so it works under that sub-path with no changes.
+- Consent handling (`oaiq("consent", ...)`). The Pixel runs with its default consent setting.
+- Server-side events through the Conversions API.
